@@ -36,6 +36,8 @@ jobs:
         pip install --upgrade pip setuptools wheel
         pip install buildozer
         pip install Cython==0.29.33 tempita
+        pip install --upgrade python-for-android
+        pip install --upgrade "kivy==2.2.1"
 
     - name: 编译 APK (在 venv 中)
       run: |
