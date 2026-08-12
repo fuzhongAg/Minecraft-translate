@@ -1,0 +1,5 @@
+kivy
+deep-translator
+openai
+pyyaml
+requests
