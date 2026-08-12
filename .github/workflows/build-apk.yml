@@ -34,14 +34,29 @@ jobs:
         python3.10 -m venv .venv
         . .venv/bin/activate
         pip install --upgrade pip setuptools wheel
-        pip install buildozer
+        pip install buildozer==1.4.2
         pip install Cython==0.29.33 tempita
-        pip install --upgrade python-for-android
+        pip install python-for-android==2023.12.0
         pip install --upgrade "kivy==2.2.1"
 
-    - name: 编译 APK (在 venv 中)
+    - name: 复制 Kivy include 文件并编译 APK
       run: |
         . .venv/bin/activate
+        python3.10 - <<'PY'
+        import os, shutil
+        try:
+            import kivy
+            kivy_include = os.path.join(os.path.dirname(kivy.__file__), "include")
+            dest = os.path.join(os.getcwd(), "kivy_include")
+            if os.path.isdir(kivy_include):
+                shutil.copytree(kivy_include, dest, dirs_exist_ok=True)
+                print("Copied kivy include to", dest)
+            else:
+                print("kivy include not found:", kivy_include)
+        except Exception as e:
+            print("Error locating kivy include:", e)
+        PY
+        export CPATH="$PWD/kivy_include:$CPATH"
         cd app-src-android
         buildozer android debug
 
