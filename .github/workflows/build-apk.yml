@@ -19,23 +19,25 @@ jobs:
         distribution: 'temurin'
         java-version: '17'
 
-    - name: 安装 Python 3.11
+    - name: 安装 Python 3.10
       uses: actions/setup-python@v4
       with:
-        python-version: '3.11'
+        python-version: '3.10'
 
     - name: 安装系统依赖
       run: |
         sudo apt-get update -y
-        sudo apt-get install -y git zip openjdk-17-jdk python3-pip \
+        sudo apt-get install -y git zip openjdk-17-jdk python3-pip python3-dev \
           build-essential autoconf automake libtool libtool-bin pkg-config m4 gettext \
           zlib1g-dev libncurses5-dev libncursesw5-dev liblzma-dev \
-          libffi-dev libssl-dev libbz2-dev libreadline-dev libsqlite3-dev tk-dev libgdbm-dev uuid-dev
+          libffi-dev libssl-dev libbz2-dev libreadline-dev libsqlite3-dev tk-dev libgdbm-dev uuid-dev \
+          libgl1-mesa-dev libgles2-mesa-dev
 
-    - name: 安装 buildozer 和 Cython
+    - name: 安装 buildozer 和受支持的 Cython
       run: |
-        pip install --upgrade pip
-        pip install buildozer Cython==0.29.36
+        pip install --upgrade pip setuptools wheel
+        pip install buildozer
+        pip install Cython==0.29.33
 
     - name: 编译 APK
       run: |
