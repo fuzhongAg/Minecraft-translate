@@ -36,7 +36,7 @@ jobs:
         python3.10 -m pip install --upgrade pip setuptools wheel
         python3.10 -m pip install "git+https://github.com/kivy/buildozer.git@master#egg=buildozer"
         python3.10 -m pip install Cython==0.29.33 tempita
-        python3.10 -m pip install python-for-android==2023.12.0
+        python3.10 -m pip install "git+https://github.com/kivy/python-for-android.git@master#egg=python-for-android"
         python3.10 -m pip install --upgrade "kivy==2.2.1"
 
     - name: 复制 Kivy include 文件并编译 APK
