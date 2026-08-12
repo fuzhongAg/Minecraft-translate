@@ -34,7 +34,7 @@ jobs:
         python3.10 -m venv .venv
         . .venv/bin/activate
         pip install --upgrade pip setuptools wheel
-        pip install buildozer==1.4.2
+        pip install buildozer==1.4.1
         pip install Cython==0.29.33 tempita
         pip install python-for-android==2023.12.0
         pip install --upgrade "kivy==2.2.1"
