@@ -16,11 +16,11 @@ source.dir = .
 source.include_exts = py,png,jpg,kv,atlas,yml,json,txt,ttf,ttc,otf
 
 # 版本号
-version = 1.0.1
+version = 1.0.0
 
 # 依赖列表（确保打包进 APK）
-# 使用 Kivy 官方 GitHub 源码，让 python-for-android 从源码构建，确保 config.pxi 等头文件完整
-requirements = python3,git+https://github.com/kivy/kivy@2.2.1#egg=kivy,deep-translator,openai,pyyaml,requests,urllib3,charset_normalizer,certifi,idna,httpx,httpcore,h11,sniffio,anyio,typing_extensions,tqdm,distro
+# 使用 kivy==2.2.1 让 python-for-android 内置 recipe 从源码编译，确保 config.pxi 等头文件完整
+requirements = python3,kivy==2.2.1,deep-translator,openai,pyyaml,requests,urllib3,charset_normalizer,certifi,idna,httpx,httpcore,h11,sniffio,anyio,typing_extensions,tqdm,distro
 
 # 安卓权限
 android.permissions = INTERNET,READ_EXTERNAL_STORAGE,WRITE_EXTERNAL_STORAGE,MANAGE_EXTERNAL_STORAGE
