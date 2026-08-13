@@ -31,7 +31,7 @@ jobs:
     - name: 安装 Python 3.10 与系统依赖
       run: |
         apt-get update -y
-        apt-get install -y git zip openjdk-17-jdk \
+        DEBIAN_FRONTEND=noninteractive TZ=Asia/Shanghai apt-get install -y git zip openjdk-17-jdk \
           python3.10 python3.10-venv python3.10-dev python3-distutils python3-pip \
           build-essential autoconf automake libtool libtool-bin pkg-config m4 gettext \
           zlib1g-dev libncurses5-dev libncursesw5-dev liblzma-dev \
