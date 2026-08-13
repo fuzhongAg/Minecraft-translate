@@ -22,10 +22,10 @@ from kivy.clock import Clock, mainthread
 from kivy.core.text import LabelBase
 from kivy.core.window import Window
 from kivy.graphics import Color, Rectangle
+from kivy.metrics import dp, sp
 from kivy.properties import NumericProperty
 from kivy.uix.boxlayout import BoxLayout
 from kivy.uix.button import Button
-from kivy.uix.filechooser import FileChooserListView
 from kivy.uix.label import Label
 from kivy.uix.popup import Popup
 from kivy.uix.progressbar import ProgressBar
@@ -47,18 +47,31 @@ from core import (
 )
 from translate import Translator
 
-
 # ---------------------------------------------------------------------------
-# 尝试注册中文字体（Android 系统常见路径）
+# 尝试注册中文字体（优先打包字体，找不到再试系统字体）
 # ---------------------------------------------------------------------------
 def _setup_font():
-    candidates = [
+    # 先找 APK 内部打包的字体
+    here = Path(__file__).resolve().parent
+    bundled = [
+        here / "fonts" / "simhei.ttf",
+        here / "fonts" / "msyh.ttc",
+        here / "fonts" / "NotoSansSC-VF.ttf",
+    ]
+    for path in bundled:
+        try:
+            if path.exists():
+                LabelBase.register(name="ChineseFont", fn_regular=str(path))
+                return "ChineseFont"
+        except Exception:
+            continue
+    # 再试 Android 系统字体
+    system = [
         "/system/fonts/NotoSansCJK-Regular.ttc",
         "/system/fonts/NotoSansCJKsc-Regular.otf",
         "/system/fonts/DroidSansFallback.ttf",
-        "/system/fonts/Roboto-Regular.ttf",
     ]
-    for path in candidates:
+    for path in system:
         try:
             if Path(path).exists():
                 LabelBase.register(name="ChineseFont", fn_regular=path)
@@ -67,13 +80,10 @@ def _setup_font():
             continue
     return None
 
-
 FONT_NAME = _setup_font()
-
 
 def _font_prop():
     return {"font_name": FONT_NAME} if FONT_NAME else {}
-
 
 # ---------------------------------------------------------------------------
 # 主题色
@@ -91,13 +101,11 @@ THEME = {
 CONFIG_FILE = Path("/sdcard/Download/mc-chinese-config.json")
 ERROR_LOG = Path("/sdcard/Download/mc-chinese-error.log")
 
-
 def _write_error_log():
     try:
         ERROR_LOG.write_text(traceback.format_exc(), encoding="utf-8")
     except Exception:
         pass
-
 
 def _request_android_permissions():
     try:
@@ -111,27 +119,36 @@ def _request_android_permissions():
     except Exception:
         pass
 
-
 # ---------------------------------------------------------------------------
 # UI 组件
 # ---------------------------------------------------------------------------
 class CLabel(Label):
-    """自动应用中文字体的标签。"""
+    """自动应用中文字体的标签，自动换行并计算高度。"""
 
     def __init__(self, **kwargs):
         kwargs.setdefault("color", THEME["fg"])
-        kwargs.setdefault("font_size", 14)
+        kwargs.setdefault("font_size", sp(16))
         kwargs.setdefault("halign", "left")
         kwargs.setdefault("valign", "middle")
         if FONT_NAME:
             kwargs.setdefault("font_name", FONT_NAME)
+        # 是否由外部显式控制高度
+        self._fixed_height = "height" in kwargs
         super().__init__(**kwargs)
-        self.bind(width=lambda obj, w: setattr(obj, "text_size", (w, None)))
+        self.bind(width=self._update_text_size)
+        if not self._fixed_height:
+            self.bind(texture_size=self._update_height)
 
+    def _update_text_size(self, instance, width):
+        self.text_size = (width, None)
+
+    def _update_height(self, instance, size):
+        if self.size_hint_y is None:
+            self.height = max(size[1], dp(20))
 
 class FeatureHeader(BoxLayout):
     def __init__(self, **kwargs):
-        super().__init__(orientation="vertical", size_hint_y=None, height=70, **kwargs)
+        super().__init__(orientation="vertical", size_hint_y=None, height=dp(64), **kwargs)
         with self.canvas.before:
             Color(*THEME["accent"])
             self._rect = Rectangle(pos=self.pos, size=self.size)
@@ -139,19 +156,20 @@ class FeatureHeader(BoxLayout):
         self.add_widget(CLabel(
             text="[b]MC 自动中文化[/b]  普通版",
             markup=True,
-            font_size=20,
+            font_size=sp(22),
             color=(1, 1, 1, 1),
             halign="center",
+            valign="middle",
+            size_hint_y=1,
         ))
 
     def _update(self, *args):
         self._rect.pos = self.pos
         self._rect.size = self.size
 
-
 class FeatureCard(BoxLayout):
     def __init__(self, **kwargs):
-        super().__init__(orientation="vertical", padding=10, spacing=6, **kwargs)
+        super().__init__(orientation="vertical", padding=dp(12), spacing=dp(10), **kwargs)
         with self.canvas.before:
             Color(*THEME["card"])
             self._rect = Rectangle(pos=self.pos, size=self.size)
@@ -161,47 +179,47 @@ class FeatureCard(BoxLayout):
         self._rect.pos = self.pos
         self._rect.size = self.size
 
-
 class FeatureButton(Button):
     def __init__(self, variant="primary", **kwargs):
         bg = THEME["accent"] if variant == "primary" else THEME["warn"] if variant == "warn" else (0.55, 0.55, 0.55, 1)
         if FONT_NAME:
             kwargs.setdefault("font_name", FONT_NAME)
+        kwargs.setdefault("font_size", sp(17))
+        kwargs.setdefault("size_hint_y", None)
+        kwargs.setdefault("height", dp(52))
         super().__init__(
             background_color=bg,
             color=(1, 1, 1, 1),
             bold=True,
-            font_size=15,
             **kwargs,
         )
-
 
 class FeatureSpinner(Spinner):
     def __init__(self, **kwargs):
         if FONT_NAME:
             kwargs.setdefault("font_name", FONT_NAME)
+        kwargs.setdefault("font_size", sp(16))
+        kwargs.setdefault("size_hint_y", None)
+        kwargs.setdefault("height", dp(52))
         super().__init__(
             background_color=(0.92, 0.92, 0.92, 1),
             color=THEME["fg"],
-            font_size=14,
             **kwargs,
         )
-
 
 class FeatureTextInput(TextInput):
     def __init__(self, **kwargs):
         if FONT_NAME:
             kwargs.setdefault("font_name", FONT_NAME)
+        kwargs.setdefault("font_size", sp(16))
         super().__init__(
             background_color=(1, 1, 1, 1),
             foreground_color=THEME["fg"],
             cursor_color=THEME["accent"],
-            font_size=14,
-            padding=8,
+            padding=dp(10),
             multiline=False,
             **kwargs,
         )
-
 
 # ---------------------------------------------------------------------------
 # 主界面
@@ -228,13 +246,16 @@ class MainLayout(ScrollView):
         Clock.schedule_once(lambda dt: _request_android_permissions(), 0.5)
 
     def _section_title(self, text):
-        return CLabel(text=f"[b]{text}[/b]", markup=True, color=THEME["accent"], size_hint_y=None, height=24)
+        return CLabel(text=f"[b]{text}[/b]", markup=True, color=THEME["accent"], font_size=sp(18), size_hint_y=None, height=dp(28))
 
-    def _hint(self, text, height=22):
-        return CLabel(text=text, color=THEME["hint"], font_size=12, size_hint_y=None, height=height)
+    def _hint(self, text, height=dp(26)):
+        return CLabel(text=text, color=THEME["hint"], font_size=sp(14), size_hint_y=None, height=height)
 
     def _build_ui(self):
-        root = BoxLayout(orientation="vertical", padding=10, spacing=8, size_hint_y=None)
+        self.bar_width = dp(8)
+        self.scroll_type = ["content"]
+        self.effect_cls = "ScrollEffect"
+        root = BoxLayout(orientation="vertical", padding=dp(12), spacing=dp(12), size_hint_y=None)
         root.bind(minimum_height=root.setter("height"))
         self.add_widget(root)
 
@@ -244,18 +265,18 @@ class MainLayout(ScrollView):
         path_card = FeatureCard()
         path_card.add_widget(self._section_title("游戏目录"))
         path_card.add_widget(self._hint("选择 mods/plugins 所在文件夹"))
-        in_box = BoxLayout(size_hint_y=None, height=46)
-        self.input_path = FeatureTextInput(hint_text="例如 /sdcard/Download/mc-server", text="/sdcard/Download/mc-server")
-        in_btn = FeatureButton(text="选择", variant="secondary", size_hint_x=None, width=80)
+        in_box = BoxLayout(size_hint_y=None, height=dp(58), spacing=dp(8))
+        self.input_path = FeatureTextInput(hint_text="例如 /sdcard/Download/mc-server", text="/sdcard/Download/mc-server", size_hint_x=1)
+        in_btn = FeatureButton(text="选择", variant="secondary", size_hint_x=None, width=dp(80))
         in_btn.bind(on_release=lambda x: self._open_chooser(self.input_path, dirselect=True))
         in_box.add_widget(self.input_path)
         in_box.add_widget(in_btn)
         path_card.add_widget(in_box)
 
         path_card.add_widget(self._section_title("输出目录"))
-        out_box = BoxLayout(size_hint_y=None, height=46)
-        self.output_path = FeatureTextInput(hint_text="输出位置", text="/sdcard/Download/mc-chinese-output")
-        out_btn = FeatureButton(text="选择", variant="secondary", size_hint_x=None, width=80)
+        out_box = BoxLayout(size_hint_y=None, height=dp(58), spacing=dp(8))
+        self.output_path = FeatureTextInput(hint_text="输出位置", text="/sdcard/Download/mc-chinese-output", size_hint_x=1)
+        out_btn = FeatureButton(text="选择", variant="secondary", size_hint_x=None, width=dp(80))
         out_btn.bind(on_release=lambda x: self._open_chooser(self.output_path, dirselect=True))
         out_box.add_widget(self.output_path)
         out_box.add_widget(out_btn)
@@ -270,8 +291,6 @@ class MainLayout(ScrollView):
         self.target_type = FeatureSpinner(
             text="模组",
             values=("模组", "插件", "整合包", "服务器"),
-            size_hint_y=None,
-            height=44,
         )
         settings_card.add_widget(self.target_type)
 
@@ -279,8 +298,6 @@ class MainLayout(ScrollView):
         self.output_mode = FeatureSpinner(
             text="生成资源包/补丁",
             values=("生成资源包/补丁", "直接修改 jar"),
-            size_hint_y=None,
-            height=44,
         )
         settings_card.add_widget(self.output_mode)
 
@@ -298,8 +315,6 @@ class MainLayout(ScrollView):
                 "Google",
                 "LLM API",
             ),
-            size_hint_y=None,
-            height=44,
         )
         self.engine.bind(text=self._on_engine_change)
         settings_card.add_widget(self.engine)
@@ -308,21 +323,19 @@ class MainLayout(ScrollView):
         self.mode = FeatureSpinner(
             text="快速版",
             values=("快速版", "完整版"),
-            size_hint_y=None,
-            height=44,
         )
         settings_card.add_widget(self.mode)
 
         settings_card.add_widget(self._hint("请求延迟（秒）"))
-        self.delay_input = FeatureTextInput(text="0.05", hint_text="0.05")
+        self.delay_input = FeatureTextInput(text="0.05", hint_text="0.05", size_hint_y=None, height=dp(52))
         settings_card.add_widget(self.delay_input)
 
         self.mode_hint = CLabel(
             text="输出模式：\n生成 → 模组生成 .zip 资源包，插件/整合包/服务器生成补丁/安装包\n直接修改 → 在原 jar 内写入汉化文件，并自动备份 .backup",
             color=THEME["hint"],
-            font_size=11,
+            font_size=sp(13),
             size_hint_y=None,
-            height=60,
+            height=dp(78),
         )
         settings_card.add_widget(self.mode_hint)
         root.add_widget(settings_card)
@@ -330,11 +343,11 @@ class MainLayout(ScrollView):
         # API 配置卡片
         api_card = FeatureCard()
         api_card.add_widget(self._section_title("API 配置（仅 LLM API 需要）"))
-        self.api_key = FeatureTextInput(hint_text="API Key", password=True)
+        self.api_key = FeatureTextInput(hint_text="API Key", password=True, size_hint_y=None, height=dp(52))
         api_card.add_widget(self.api_key)
-        self.base_url = FeatureTextInput(hint_text="Base URL")
+        self.base_url = FeatureTextInput(hint_text="Base URL", size_hint_y=None, height=dp(52))
         api_card.add_widget(self.base_url)
-        self.model = FeatureTextInput(hint_text="模型")
+        self.model = FeatureTextInput(hint_text="模型", size_hint_y=None, height=dp(52))
         api_card.add_widget(self.model)
         root.add_widget(api_card)
 
@@ -342,20 +355,20 @@ class MainLayout(ScrollView):
         action_card = FeatureCard()
         action_card.add_widget(self._section_title("进度"))
 
-        self.progress_bar = ProgressBar(max=100, value=0, size_hint_y=None, height=24)
+        self.progress_bar = ProgressBar(max=100, value=0, size_hint_y=None, height=dp(28))
         action_card.add_widget(self.progress_bar)
 
-        self.eta_label = CLabel(text="预计剩余时间：--", color=THEME["hint"], font_size=12, height=22)
+        self.eta_label = CLabel(text="预计剩余时间：--", color=THEME["hint"], font_size=sp(14), size_hint_y=None, height=dp(26))
         action_card.add_widget(self.eta_label)
 
-        self.status_label = CLabel(text="状态：就绪", font_size=14, height=24)
+        self.status_label = CLabel(text="状态：就绪", font_size=sp(16), size_hint_y=None, height=dp(28))
         action_card.add_widget(self.status_label)
 
-        self.start_btn = FeatureButton(text="开始翻译", variant="primary", size_hint_y=None, height=54)
+        self.start_btn = FeatureButton(text="开始翻译", variant="primary", size_hint_y=None, height=dp(58))
         self.start_btn.bind(on_release=self._start)
         action_card.add_widget(self.start_btn)
 
-        help_btn = FeatureButton(text="使用说明", variant="secondary", size_hint_y=None, height=44)
+        help_btn = FeatureButton(text="使用说明", variant="secondary", size_hint_y=None, height=dp(50))
         help_btn.bind(on_release=self._show_help)
         action_card.add_widget(help_btn)
         root.add_widget(action_card)
@@ -368,48 +381,93 @@ class MainLayout(ScrollView):
             multiline=True,
             background_color=(0.98, 0.98, 0.98, 1),
             foreground_color=THEME["fg"],
-            font_size=12,
+            font_size=sp(14),
             size_hint_y=None,
-            height=280,
+            height=dp(260),
         )
         if FONT_NAME:
             self.log_box.font_name = FONT_NAME
         log_card.add_widget(self.log_box)
-        clear_btn = FeatureButton(text="清空日志", variant="secondary", size_hint_y=None, height=40)
+        clear_btn = FeatureButton(text="清空日志", variant="secondary", size_hint_y=None, height=dp(48))
         clear_btn.bind(on_release=lambda x: setattr(self.log_box, "text", ""))
         log_card.add_widget(clear_btn)
         root.add_widget(log_card)
 
-        root.add_widget(Widget(size_hint_y=None, height=30))
+        root.add_widget(Widget(size_hint_y=None, height=dp(30)))
 
     def _on_engine_change(self, spinner, text):
         if text == "LLM API":
             self._log("提示：选择 LLM API 后请填写 API Key、Base URL 和模型")
 
     def _open_chooser(self, target_input, dirselect=False):
-        content = BoxLayout(orientation="vertical")
+        content = BoxLayout(orientation="vertical", padding=dp(10), spacing=dp(8))
         default_path = target_input.text.strip() or "/sdcard/Download"
         try:
             if not Path(default_path).exists():
                 default_path = "/sdcard/Download"
         except Exception:
             default_path = "/sdcard/Download"
-        chooser = FileChooserListView(path=default_path, dirselect=dirselect)
-        content.add_widget(chooser)
-        btn_box = BoxLayout(size_hint_y=None, height=50, spacing=10)
-        popup = Popup(title="选择目录" if dirselect else "选择文件", content=content, size_hint=(0.92, 0.85))
 
-        def confirm(_):
-            if chooser.selection:
-                target_input.text = chooser.selection[0]
+        popup = Popup(title="选择目录", content=content, size_hint=(0.94, 0.88))
+
+        current_label = CLabel(
+            text=f"当前：{default_path}",
+            font_size=sp(14),
+            size_hint_y=None,
+            height=dp(32),
+        )
+        content.add_widget(current_label)
+
+        scroll = ScrollView()
+        list_box = BoxLayout(orientation="vertical", size_hint_y=None, spacing=dp(6))
+        list_box.bind(minimum_height=list_box.setter("height"))
+        scroll.add_widget(list_box)
+        content.add_widget(scroll)
+
+        def select_current(_):
+            target_input.text = current_label.text.replace("当前：", "")
             popup.dismiss()
 
+        def load(path):
+            current_label.text = f"当前：{path}"
+            list_box.clear_widgets()
+            try:
+                p = Path(path)
+                # 上级目录
+                parent = str(p.parent)
+                if parent != path and parent != ".":
+                    btn = FeatureButton(
+                        text="[上级目录] ..",
+                        variant="secondary",
+                        size_hint_y=None,
+                        height=dp(50),
+                    )
+                    btn.bind(on_release=lambda x: load(parent))
+                    list_box.add_widget(btn)
+
+                for item in sorted(p.iterdir()):
+                    if item.is_dir():
+                        name = item.name
+                        btn = FeatureButton(
+                            text=f"[文件夹] {name}",
+                            variant="secondary",
+                            size_hint_y=None,
+                            height=dp(50),
+                        )
+                        btn.bind(on_release=lambda x, full=str(item): load(full))
+                        list_box.add_widget(btn)
+            except Exception as exc:
+                current_label.text = f"读取失败：{exc}"
+
+        load(default_path)
+
+        btn_box = BoxLayout(size_hint_y=None, height=dp(56), spacing=dp(10))
         cancel_btn = FeatureButton(text="取消", variant="secondary")
         cancel_btn.bind(on_release=popup.dismiss)
-        ok_btn = FeatureButton(text="确定")
-        ok_btn.bind(on_release=confirm)
+        select_btn = FeatureButton(text="选择当前目录")
+        select_btn.bind(on_release=select_current)
         btn_box.add_widget(cancel_btn)
-        btn_box.add_widget(ok_btn)
+        btn_box.add_widget(select_btn)
         content.add_widget(btn_box)
         popup.open()
 
@@ -712,20 +770,18 @@ class MainLayout(ScrollView):
             content=CLabel(
                 text=help_text,
                 color=THEME["fg"],
-                font_size=14,
+                font_size=sp(16),
                 halign="left",
                 valign="top",
-                padding=(12, 12),
+                padding=(dp(12), dp(12)),
             ),
             size_hint=(0.92, 0.85),
         )
         popup.open()
 
-
 class MCChineseApp(App):
     def build(self):
         return MainLayout()
-
 
 if __name__ == "__main__":
     MCChineseApp().run()
