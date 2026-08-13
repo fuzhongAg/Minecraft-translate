@@ -8,6 +8,8 @@ on:
 jobs:
   build:
     runs-on: ubuntu-22.04
+    env:
+      PIP_NO_BUILD_ISOLATION: '1'
 
     steps:
     - name: 检出代码
@@ -47,7 +49,7 @@ jobs:
     - name: 编译 APK
       run: |
         . .venv/bin/activate
-        export PIP_NO_BUILD_ISOLATION=1
+        export PATH="$PWD/.venv/bin:$PATH"
         cd app-src-android
         buildozer android debug
 
