@@ -65,7 +65,15 @@ jobs:
         python -c "import cgi; print('cgi 模块可用')"
         export PATH="$PWD/.venv/bin:$PATH"
         cd app-src-android
-        buildozer android debug
+        buildozer android debug 2>&1 | tee ../buildozer.log
+
+    - name: 上传 buildozer 日志（无论成败）
+      if: always()
+      uses: actions/upload-artifact@v4
+      with:
+        name: buildozer-log
+        path: buildozer.log
+        if-no-files-found: ignore
 
     - name: 上传 APK
       uses: actions/upload-artifact@v4
