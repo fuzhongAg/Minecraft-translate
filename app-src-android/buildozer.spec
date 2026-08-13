@@ -20,7 +20,8 @@ version = 1.0.0
 
 # 依赖列表（确保打包进 APK）
 # 使用 kivy==2.2.1 让 python-for-android 内置 recipe 从源码编译，确保 config.pxi 等头文件完整
-requirements = python3,kivy==2.2.1,deep-translator,openai,pyyaml,requests,urllib3,charset_normalizer,certifi,idna,httpx,httpcore,h11,sniffio,anyio,typing_extensions,tqdm,distro
+# python3==3.10.15 强制 Android 目标解释器为 3.10，避免 p4a 默认拉取 3.14 导致 cgi 缺失
+requirements = python3==3.10.15,hostpython3==3.10.15,kivy==2.2.1,deep-translator,openai,pyyaml,requests,urllib3,charset_normalizer,certifi,idna,httpx,httpcore,h11,sniffio,anyio,typing_extensions,tqdm,distro
 
 # 安卓权限
 android.permissions = INTERNET,READ_EXTERNAL_STORAGE,WRITE_EXTERNAL_STORAGE,MANAGE_EXTERNAL_STORAGE
@@ -57,8 +58,8 @@ android.accept_sdk_license = True
 # 不提示 root 警告
 warn_on_root = 0
 
-# 日志级别
-log_level = 2
+# 日志级别（0=最详细，方便 CI 排障）
+log_level = 0
 
 # 构建目录
 build_dir = ./.buildozer
