@@ -34,42 +34,19 @@ jobs:
           libgl1-mesa-dev libgles2-mesa-dev libpango1.0-dev \
           libsdl2-dev libsdl2-image-dev libsdl2-mixer-dev libsdl2-ttf-dev libmtdev-dev libudev-dev libjpeg-dev
 
-    - name: 安装 buildozer 和编译工具到独立 virtualenv
+    - name: 安装 buildozer 和 python-for-android 到独立 virtualenv
       run: |
         python3.10 -m venv .venv
         . .venv/bin/activate
         python3.10 -m pip install --upgrade pip
         python3.10 -m pip install setuptools==65.5.0 wheel
-        export PIP_NO_BUILD_ISOLATION=1
         python3.10 -m pip install Cython==0.29.33 tempita
         python3.10 -m pip install "git+https://github.com/kivy/buildozer.git@master#egg=buildozer"
         python3.10 -m pip install "git+https://github.com/kivy/python-for-android.git@master#egg=python-for-android"
-        python3.10 -m pip install --upgrade "git+https://github.com/kivy/kivy@2.2.1#egg=kivy"
 
-    - name: 复制 Kivy include 文件并编译 APK
+    - name: 编译 APK
       run: |
         . .venv/bin/activate
-        python3.10 - <<'PY'
-        import os, shutil, sys
-        try:
-            import kivy
-            kivy_include = os.path.join(os.path.dirname(kivy.__file__), "include")
-            dest = os.path.join(os.getcwd(), "kivy_include")
-            if os.path.isdir(kivy_include):
-                shutil.copytree(kivy_include, dest, dirs_exist_ok=True)
-                print("Copied kivy include to", dest)
-            else:
-                print("kivy include not found:", kivy_include)
-                sys.exit(1)
-        except Exception as e:
-            print("Error locating kivy include:", e)
-            sys.exit(1)
-        PY
-        if [ ! -f "$PWD/kivy_include/kivy/config.pxi" ]; then
-          echo "ERROR: 缺少 config.pxi，Kivy 没有从源码正确安装"
-          exit 1
-        fi
-        export CPATH="$PWD/kivy_include:$CPATH"
         export PIP_NO_BUILD_ISOLATION=1
         cd app-src-android
         buildozer android debug
