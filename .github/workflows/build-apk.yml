@@ -10,6 +10,7 @@ jobs:
     runs-on: ubuntu-22.04
     env:
       PIP_NO_BUILD_ISOLATION: '1'
+      PIP_INDEX_URL: 'https://pypi.tuna.tsinghua.edu.cn/simple'
 
     steps:
     - name: 检出代码
@@ -35,8 +36,7 @@ jobs:
           libffi-dev libssl-dev libbz2-dev libreadline-dev libsqlite3-dev tk-dev libgdbm-dev uuid-dev \
           libgl1-mesa-dev libgles2-mesa-dev libpango1.0-dev \
           libsdl2-dev libsdl2-image-dev libsdl2-mixer-dev libsdl2-ttf-dev libmtdev-dev libudev-dev libjpeg-dev
-        # 强制 python3 指向 3.10
-        sudo ln -sf /usr/bin/python3.10 /usr/bin/python3
+        # 验证 python3 是 3.10（setup-python + ubuntu-22.04 默认就是）
         python3 --version
         python3 -c "import cgi; print('cgi 模块可用')"
 
@@ -46,11 +46,16 @@ jobs:
         . .venv/bin/activate
         python --version
         which python
+        export PIP_NO_BUILD_ISOLATION=1
+        # 写到 pip 配置，确保 p4a 子进程创的子 venv 里 pip 也不隔离构建
+        pip config set global.no-build-isolation true
+        pip config set global.index-url https://pypi.tuna.tsinghua.edu.cn/simple
         pip install --upgrade pip
         pip install setuptools==65.5.0 wheel
         pip install Cython==0.29.33 tempita
-        pip install "git+https://github.com/kivy/buildozer.git@master#egg=buildozer"
-        pip install "git+https://github.com/kivy/python-for-android.git@master#egg=python-for-android"
+        # 使用 master（tag 可能不存在会失败），--no-build-isolation 防止 pip 创临时 Python 3.14
+        pip install --no-build-isolation "git+https://github.com/kivy/python-for-android.git@master#egg=python-for-android"
+        pip install --no-build-isolation "git+https://github.com/kivy/buildozer.git@master#egg=buildozer"
 
     - name: 编译 APK
       run: |
@@ -58,6 +63,9 @@ jobs:
         echo "=== VENV python ==="
         python --version
         which python
+        export PIP_NO_BUILD_ISOLATION=1
+        # HOME 指向工作目录，防止 buildozer 尝试写 /root/.buildozer
+        export HOME="$PWD"
         export PATH="$PWD/.venv/bin:$PATH"
         python -c "import cgi; print('cgi 模块可用')"
         cd app-src-android
