@@ -15,58 +15,33 @@ jobs:
     - name: 检出代码
       uses: actions/checkout@v4
 
+    - name: 设置 runner 的 Python（强制 3.10）
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.10'
+
     - name: 安装 Java 17
       uses: actions/setup-java@v4
       with:
         distribution: 'temurin'
         java-version: '17'
 
-    - name: 彻底清理 Python 环境，只留 3.10
+    - name: 安装系统依赖
       run: |
-        # 列出所有 Python 版本
-        echo "=== 当前系统 Python ==="
-        ls -la /usr/bin/python* 2>/dev/null || true
-        which python3 && python3 --version || echo "python3 不存在"
-        
-        # 卸载所有 Python 3.11+
-        echo "=== 卸载高版本 Python ==="
-        sudo apt-get remove -y --purge python3.11 python3.11-minimal python3.11-venv python3.11-dev python3.11-distutils 2>/dev/null || true
-        sudo apt-get remove -y --purge python3.12 python3.12-minimal python3.12-venv python3.12-dev 2>/dev/null || true
-        sudo apt-get remove -y --purge python3.13 python3.13-minimal 2>/dev/null || true
-        sudo apt-get remove -y --purge python3.14 python3.14-minimal 2>/dev/null || true
-        sudo apt-get autoremove -y 2>/dev/null || true
-        
-        # 安装 Python 3.10
-        echo "=== 安装 Python 3.10 ==="
         sudo apt-get update -y
-        sudo apt-get install -y python3.10 python3.10-venv python3.10-dev python3.10-distutils python3-pip
-        
-        # 强制符号链接 python3 -> python3.10
-        sudo ln -sf /usr/bin/python3.10 /usr/bin/python3
-        sudo ln -sf /usr/bin/python3.10 /usr/bin/python
-        
-        # 安装所有编译依赖
         sudo apt-get install -y git zip openjdk-17-jdk \
           build-essential autoconf automake libtool libtool-bin pkg-config m4 gettext \
           zlib1g-dev libncurses5-dev libncursesw5-dev liblzma-dev \
           libffi-dev libssl-dev libbz2-dev libreadline-dev libsqlite3-dev tk-dev libgdbm-dev uuid-dev \
           libgl1-mesa-dev libgles2-mesa-dev libpango1.0-dev \
           libsdl2-dev libsdl2-image-dev libsdl2-mixer-dev libsdl2-ttf-dev libmtdev-dev libudev-dev libjpeg-dev
-        
-        # 验证
-        echo "=== 最终验证 ==="
-        echo "python3  路径: $(which python3)"
-        echo "python3  版本: $(python3 --version)"
-        echo "python   路径: $(which python)"
-        echo "python   版本: $(python --version)"
-        echo "剩余 Python 版本:"
-        ls -la /usr/bin/python3.* 2>/dev/null || true
+        python3 --version
+        python3 -c "import cgi; print('cgi 模块可用')"
 
     - name: 安装 buildozer 和 python-for-android
       run: |
-        python3 -m venv .venv
+        python3.10 -m venv .venv
         . .venv/bin/activate
-        echo "=== venv Python ==="
         python --version
         which python
         pip install --upgrade pip
@@ -78,10 +53,10 @@ jobs:
     - name: 编译 APK
       run: |
         . .venv/bin/activate
-        export PATH="$PWD/.venv/bin:$PATH"
-        echo "=== 编译环境确认 ==="
+        echo "=== VENV python ==="
         python --version
         which python
+        export PATH="$PWD/.venv/bin:$PATH"
         python -c "import cgi; print('cgi 模块可用')"
         cd app-src-android
         buildozer android debug
