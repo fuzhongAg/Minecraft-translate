@@ -117,8 +117,36 @@ def _request_android_permissions():
             Permission.INTERNET,
             Permission.READ_EXTERNAL_STORAGE,
             Permission.WRITE_EXTERNAL_STORAGE,
-            Permission.MANAGE_EXTERNAL_STORAGE,
         ])
+    except Exception:
+        pass
+
+
+def _check_all_files_permission():
+    """检查 Android 11+ 的所有文件访问权限是否已开启。"""
+    try:
+        from jnius import autoclass
+
+        Build = autoclass("android.os.Build")
+        if Build.VERSION.SDK_INT < 30:
+            return True
+
+        Environment = autoclass("android.os.Environment")
+        return bool(Environment.isExternalStorageManager())
+    except Exception:
+        return True
+
+
+def _open_all_files_settings():
+    """跳转到系统设置，让用户手动开启所有文件访问权限。"""
+    try:
+        from jnius import autoclass
+        from android import activity
+
+        Intent = autoclass("android.content.Intent")
+        Settings = autoclass("android.provider.Settings")
+        intent = Intent(Settings.ACTION_MANAGE_ALL_FILES_ACCESS_PERMISSION)
+        activity.startActivity(intent)
     except Exception:
         pass
 
@@ -198,6 +226,7 @@ class MainLayout(BoxLayout):
             Window.clearcolor = THEME["bg"]
             self._log_buffer = []
             self._start_time = None
+            self._has_all_files_permission = True
             self._build_ui()
             self._load_config()
             self._request_permissions()
@@ -209,6 +238,13 @@ class MainLayout(BoxLayout):
 
     def _request_permissions(self):
         Clock.schedule_once(lambda dt: _request_android_permissions(), 0.5)
+        def check(dt):
+            ok = _check_all_files_permission()
+            self._has_all_files_permission = ok
+            if not ok:
+                self._log("提示：Android 11+ 需要“所有文件访问权限”才能读取 FCL/mods 等目录")
+                self._log("如果扫描不到 jar，请到系统设置中为本应用开启该权限")
+        Clock.schedule_once(check, 1.0)
 
     def _update_header(self, instance, value):
         self._header_rect.pos = instance.pos
@@ -815,6 +851,12 @@ class MainLayout(BoxLayout):
             self._log("错误：选择 LLM API 时必须填写 API Key")
             return
 
+        if not getattr(self, "_has_all_files_permission", True):
+            self._log("警告：未开启所有文件访问权限，可能导致无法读取目录")
+            self._log("正在跳转权限设置，请手动开启“允许管理所有文件”后返回重试")
+            _open_all_files_settings()
+            return
+
         self.start_btn.disabled = True
         self.start_btn.text = "翻译中..."
         self.status_label.text = "状态：正在翻译..."
@@ -899,8 +941,8 @@ class MainLayout(BoxLayout):
                     )
                 elif target == "plugins":
                     plugins_dir = discover_target_dir(input_path, "plugins")
-                    jars = scan_jars(plugins_dir)
-                    self._log(f"扫描到 {len(jars)} 个插件 jar")
+                    self._log(f"实际扫描目录：{plugins_dir}")
+                    jars = scan_jars(plugins_dir, on_log=lambda m: self._log(m))
                     if not jars:
                         continue
                     if output_mode == "inplace":
@@ -921,8 +963,8 @@ class MainLayout(BoxLayout):
                     )
                 else:
                     mods_dir = discover_target_dir(input_path, "mods")
-                    jars = scan_jars(mods_dir)
-                    self._log(f"扫描到 {len(jars)} 个模组 jar")
+                    self._log(f"实际扫描目录：{mods_dir}")
+                    jars = scan_jars(mods_dir, on_log=lambda m: self._log(m))
                     if not jars:
                         continue
                     if output_mode == "inplace":
