@@ -20,6 +20,7 @@ from kivy.app import App
 from kivy.clock import Clock, mainthread
 from kivy.core.text import LabelBase
 from kivy.core.window import Window
+from kivy.graphics import Color, Rectangle
 from kivy.metrics import dp, sp
 from kivy.properties import NumericProperty
 from kivy.uix.boxlayout import BoxLayout
@@ -198,6 +199,10 @@ class MainLayout(BoxLayout):
     def _request_permissions(self):
         Clock.schedule_once(lambda dt: _request_android_permissions(), 0.5)
 
+    def _update_header(self, instance, value):
+        self._header_rect.pos = instance.pos
+        self._header_rect.size = instance.size
+
     def _section_title(self, text):
         return CLabel(
             text=f"[b]{text}[/b]",
@@ -225,6 +230,10 @@ class MainLayout(BoxLayout):
             height=dp(56),
             padding=(dp(12), dp(8)),
         )
+        with header.canvas.before:
+            Color(*THEME["accent"])
+            self._header_rect = Rectangle(pos=header.pos, size=header.size)
+        header.bind(pos=self._update_header, size=self._update_header)
         header.add_widget(CLabel(
             text="Minecraft 自动翻译工具",
             font_size=sp(20),
@@ -234,7 +243,6 @@ class MainLayout(BoxLayout):
             valign="middle",
             size_hint_y=1,
         ))
-        header.background_color = THEME["accent"]
         self.add_widget(header)
 
         # 中间可滚动内容
@@ -456,3 +464,400 @@ class MainLayout(BoxLayout):
         self.start_btn.bind(on_release=self._start)
         footer.add_widget(self.start_btn)
         self.add_widget(footer)
+
+    def _on_ai_change(self, btn):
+        for b in self.ai_buttons:
+            if b != btn:
+                b.state = "normal"
+        if self._get_ai_value() == "llm":
+            self._log("提示：选择 LLM API 后请填写 API Key")
+
+    def _on_target_change(self, btn):
+        for b in self.target_buttons:
+            if b != btn:
+                b.state = "normal"
+
+    def _get_ai_value(self):
+        for btn in self.ai_buttons:
+            if btn.state == "down":
+                return btn.value
+        return "multi_free"
+
+    def _get_target_value(self):
+        for btn in self.target_buttons:
+            if btn.state == "down":
+                return btn.value
+        return "模组"
+
+    def _get_mode_value(self):
+        for btn in self.mode_buttons:
+            if btn.state == "down":
+                return btn.value
+        return "快速版"
+
+    def _open_chooser(self, target_input):
+        content = BoxLayout(orientation="vertical", padding=dp(10), spacing=dp(8))
+        default_path = target_input.text.strip() or "/sdcard/Download"
+        try:
+            if not Path(default_path).exists():
+                default_path = "/sdcard/Download"
+        except Exception:
+            default_path = "/sdcard/Download"
+
+        popup = Popup(title="选择目录", content=content, size_hint=(0.94, 0.88))
+
+        current_label = CLabel(
+            text=f"当前：{default_path}",
+            font_size=sp(14),
+            size_hint_y=None,
+            height=dp(32),
+        )
+        content.add_widget(current_label)
+
+        scroll = ScrollView()
+        list_box = BoxLayout(orientation="vertical", size_hint_y=None, spacing=dp(6))
+        list_box.bind(minimum_height=list_box.setter("height"))
+        scroll.add_widget(list_box)
+        content.add_widget(scroll)
+
+        def select_current(_):
+            target_input.text = current_label.text.replace("当前：", "")
+            popup.dismiss()
+
+        def load(path):
+            current_label.text = f"当前：{path}"
+            list_box.clear_widgets()
+            try:
+                p = Path(path)
+                parent = str(p.parent)
+                if parent != path and parent != ".":
+                    up_btn = CButton(
+                        text="[上级目录] ..",
+                        size_hint_y=None,
+                        height=dp(46),
+                        background_color=(0.55, 0.55, 0.55, 1),
+                        color=THEME["white"],
+                    )
+                    up_btn.bind(on_release=lambda x: load(parent))
+                    list_box.add_widget(up_btn)
+
+                for item in sorted(p.iterdir()):
+                    if item.is_dir():
+                        name = item.name
+                        dir_btn = CButton(
+                            text=f"[文件夹] {name}",
+                            size_hint_y=None,
+                            height=dp(46),
+                            background_color=(0.75, 0.75, 0.75, 1),
+                            color=THEME["fg"],
+                        )
+                        dir_btn.bind(on_release=lambda x, full=str(item): load(full))
+                        list_box.add_widget(dir_btn)
+            except Exception as exc:
+                current_label.text = f"读取失败：{exc}"
+
+        load(default_path)
+
+        btn_box = BoxLayout(size_hint_y=None, height=dp(54), spacing=dp(10))
+        cancel_btn = CButton(
+            text="取消",
+            background_color=(0.55, 0.55, 0.55, 1),
+            color=THEME["white"],
+        )
+        cancel_btn.bind(on_release=popup.dismiss)
+        select_btn = CButton(
+            text="选择当前目录",
+            background_color=THEME["accent"],
+            color=THEME["white"],
+        )
+        select_btn.bind(on_release=select_current)
+        btn_box.add_widget(cancel_btn)
+        btn_box.add_widget(select_btn)
+        content.add_widget(btn_box)
+        popup.open()
+
+    def _log(self, msg: str):
+        timestamp = time.strftime("%H:%M:%S")
+        self._log_buffer.append(f"[{timestamp}] {msg}")
+
+    @mainthread
+    def _flush_logs(self, dt):
+        if self._log_buffer:
+            self.log_box.text += "\n".join(self._log_buffer) + "\n"
+            self._log_buffer.clear()
+            self.log_box.cursor = (0, len(self.log_box.text))
+
+    def _set_progress(self, pct: float):
+        Clock.schedule_once(lambda dt: setattr(self.progress_bar, "value", max(0.0, min(100.0, pct))), 0)
+
+    def _tick_eta(self, dt):
+        if self._start_time is None:
+            return True
+        elapsed = time.time() - self._start_time
+        pct = self.progress_bar.value
+        if pct > 1.0 and elapsed > 2.0:
+            total_est = elapsed / (pct / 100.0)
+            remaining = max(0, total_est - elapsed)
+            if remaining < 60:
+                eta = f"预计剩余时间：{remaining:.0f} 秒"
+            elif remaining < 3600:
+                eta = f"预计剩余时间：{remaining / 60:.1f} 分钟"
+            else:
+                eta = f"预计剩余时间：{remaining / 3600:.1f} 小时"
+        else:
+            eta = "预计剩余时间：计算中..."
+        self.eta_label.text = eta
+        return True
+
+    def _load_config(self):
+        try:
+            if CONFIG_FILE.exists():
+                cfg = json.loads(CONFIG_FILE.read_text(encoding="utf-8"))
+                inputs = cfg.get("inputs", ["/sdcard/Download/mc-server", "", "", ""])
+                for i, inp in enumerate(self.input_items):
+                    if i < len(inputs):
+                        inp.text = inputs[i]
+                self.output_path.text = cfg.get("output", "/sdcard/Download/mc-chinese-output")
+                self._set_ai(cfg.get("engine", "多引擎自动"))
+                self._set_target(cfg.get("target_type", "模组"))
+                self._set_mode(cfg.get("mode", "快速版"))
+                self.delay_input.text = cfg.get("delay", "0.05")
+                self.api_key.text = cfg.get("api_key", "")
+                self.base_url.text = cfg.get("base_url", "")
+                self.model.text = cfg.get("model", "")
+        except Exception:
+            pass
+
+    def _set_ai(self, text):
+        for btn in self.ai_buttons:
+            if btn.text == text:
+                btn.state = "down"
+            else:
+                btn.state = "normal"
+
+    def _set_target(self, text):
+        for btn in self.target_buttons:
+            if btn.text == text:
+                btn.state = "down"
+            else:
+                btn.state = "normal"
+
+    def _set_mode(self, text):
+        for btn in self.mode_buttons:
+            if btn.text == text:
+                btn.state = "down"
+            else:
+                btn.state = "normal"
+
+    def _save_config(self):
+        try:
+            CONFIG_FILE.parent.mkdir(parents=True, exist_ok=True)
+            cfg = {
+                "inputs": [inp.text for inp in self.input_items],
+                "output": self.output_path.text,
+                "engine": self._get_ai_button_text(),
+                "target_type": self._get_target_value(),
+                "mode": self._get_mode_value(),
+                "delay": self.delay_input.text,
+                "api_key": self.api_key.text,
+                "base_url": self.base_url.text,
+                "model": self.model.text,
+            }
+            CONFIG_FILE.write_text(json.dumps(cfg, ensure_ascii=False, indent=2), encoding="utf-8")
+        except Exception as exc:
+            self._log(f"保存配置失败：{exc}")
+
+    def _get_ai_button_text(self):
+        for btn in self.ai_buttons:
+            if btn.state == "down":
+                return btn.text
+        return "多引擎自动"
+
+    def _target_map(self) -> str:
+        mapping = {"模组": "mods", "插件": "plugins", "整合包": "modpack", "服务器": "server"}
+        return mapping.get(self._get_target_value(), "mods")
+
+    def _output_mode_map(self) -> str:
+        return "generate"
+
+    def _start(self, _):
+        input_paths = [Path(inp.text.strip()) for inp in self.input_items if inp.text.strip()]
+        input_paths = [p for p in input_paths if p.exists()]
+        output_path = Path(self.output_path.text.strip())
+        target = self._target_map()
+        output_mode = self._output_mode_map()
+        engine_name = self._get_ai_value()
+        mode = "full" if self._get_mode_value() == "完整版" else "fast"
+        api_key = self.api_key.text.strip() or None
+        base_url = self.base_url.text.strip() or None
+        model = self.model.text.strip() or "deepseek-chat"
+        try:
+            delay = float(self.delay_input.text.strip() or "0.05")
+        except ValueError:
+            delay = 0.05
+
+        if not input_paths:
+            self._log("错误：至少填写一个有效的输入目录")
+            return
+
+        if engine_name == "llm" and not api_key:
+            self._log("错误：选择 LLM API 时必须填写 API Key")
+            return
+
+        self.start_btn.disabled = True
+        self.start_btn.text = "翻译中..."
+        self.status_label.text = "状态：正在翻译..."
+        self.progress_bar.value = 0
+        self.eta_label.text = "预计剩余时间：计算中..."
+        self._start_time = time.time()
+        self._save_config()
+        self._log("=" * 30)
+        self._log(f"开始翻译 | 目标：{self._get_target_value()} | 引擎：{self._get_ai_button_text()} | 模式：{self._get_mode_value()}")
+        self._log(f"共 {len(input_paths)} 个目录待处理")
+
+        thread = threading.Thread(
+            target=self._worker,
+            args=(input_paths, output_path, target, output_mode, engine_name, mode, api_key, base_url, model, delay),
+            daemon=True,
+        )
+        thread.start()
+
+    def _worker(self, input_paths, output_path, target, output_mode, engine_name, mode, api_key, base_url, model, delay):
+        try:
+            translator = Translator(
+                engine=engine_name,
+                api_key=api_key,
+                base_url=base_url,
+                model=model,
+                mode=mode,
+                delay=delay,
+            )
+            self._log(translator.readiness_message())
+
+            if not translator.is_ready():
+                self._log("翻译引擎未就绪，请检查网络或 API Key")
+                return
+
+            output_path.mkdir(parents=True, exist_ok=True)
+            total_paths = len(input_paths)
+
+            for idx, input_path in enumerate(input_paths):
+                base_pct = idx / total_paths * 100
+                self._log(f"处理第 {idx + 1}/{total_paths} 个目录：{input_path}")
+
+                def progress_cb(current: int, total: int, msg: str = ""):
+                    inner_pct = (current / total * 100) if total > 0 else 0
+                    self._set_progress(base_pct + inner_pct / total_paths)
+                    if msg:
+                        self._log(msg)
+
+                if target == "modpack":
+                    result = process_modpack(
+                        minecraft_path=input_path,
+                        translator=translator,
+                        output_dir=output_path,
+                        pack_format=15,
+                        on_log=lambda m: self._log(m),
+                        progress_cb=progress_cb,
+                        mode=output_mode,
+                    )
+                    stats = summarize(result)
+                    self._log(
+                        f"整合包统计：共 {stats['total']} 个 jar，"
+                        f"翻译 {stats['translated_mods']} 个，"
+                        f"跳过 {stats['skipped_mods']} 个，"
+                        f"失败 {stats['errors']} 个"
+                    )
+                elif target == "server":
+                    result = process_server(
+                        server_root=input_path,
+                        translator=translator,
+                        output_dir=output_path,
+                        pack_format=15,
+                        on_log=lambda m: self._log(m),
+                        progress_cb=progress_cb,
+                        mode=output_mode,
+                    )
+                    stats = summarize(result)
+                    self._log(
+                        f"服务器统计：共 {stats['total']} 个 jar，"
+                        f"翻译 {stats['translated_mods']} 个，"
+                        f"跳过 {stats['skipped_mods']} 个，"
+                        f"失败 {stats['errors']} 个"
+                    )
+                elif target == "plugins":
+                    plugins_dir = discover_target_dir(input_path, "plugins")
+                    jars = scan_jars(plugins_dir)
+                    self._log(f"扫描到 {len(jars)} 个插件 jar")
+                    if not jars:
+                        continue
+                    presult = generate_plugin_patch(jars, translator, output_path, on_log=lambda m: self._log(m), progress_cb=progress_cb)
+                    stats = summarize(presult)
+                    self._log(
+                        f"插件统计：共 {stats['total']} 个，"
+                        f"翻译 {stats['translated_mods']} 个，"
+                        f"跳过 {stats['skipped_mods']} 个，"
+                        f"失败 {stats['errors']} 个"
+                    )
+                else:
+                    mods_dir = discover_target_dir(input_path, "mods")
+                    jars = scan_jars(mods_dir)
+                    self._log(f"扫描到 {len(jars)} 个模组 jar")
+                    if not jars:
+                        continue
+                    mresult = generate_resource_pack(
+                        jars,
+                        translator,
+                        output_path,
+                        pack_name="AutoChineseResourcePack",
+                        pack_format=15,
+                        on_log=lambda m: self._log(m),
+                        progress_cb=progress_cb,
+                    )
+                    stats = summarize(mresult)
+                    self._log(
+                        f"模组统计：共 {stats['total']} 个，"
+                        f"翻译 {stats['translated_mods']} 个，"
+                        f"跳过 {stats['skipped_mods']} 个，"
+                        f"失败 {stats['errors']} 个"
+                    )
+
+            self._log("完成！")
+        except Exception as exc:
+            self._log(f"翻译失败：{exc}")
+        finally:
+            Clock.schedule_once(lambda dt: self._finish(), 0)
+
+    @mainthread
+    def _finish(self):
+        self.start_btn.disabled = False
+        self.start_btn.text = "开始翻译"
+        self.status_label.text = "状态：就绪"
+        self._set_progress(100.0)
+        self.eta_label.text = "预计剩余时间：已完成"
+        self._start_time = None
+
+class MCChineseApp(App):
+    def build(self):
+        try:
+            return MainLayout()
+        except Exception:
+            try:
+                crash_path = Path("/sdcard/Download/mc-chinese-crash.log")
+                crash_path.parent.mkdir(parents=True, exist_ok=True)
+                crash_path.write_text(traceback.format_exc(), encoding="utf-8")
+            except Exception:
+                pass
+            raise
+
+if __name__ == "__main__":
+    try:
+        MCChineseApp().run()
+    except Exception:
+        try:
+            crash_path = Path("/sdcard/Download/mc-chinese-crash.log")
+            crash_path.parent.mkdir(parents=True, exist_ok=True)
+            crash_path.write_text(traceback.format_exc(), encoding="utf-8")
+        except Exception:
+            pass
+        raise
