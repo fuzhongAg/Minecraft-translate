@@ -20,8 +20,9 @@ version = 1.0.0
 
 # 依赖列表（确保打包进 APK）
 # 使用 kivy==2.2.1 让 python-for-android 内置 recipe 从源码编译，确保 config.pxi 等头文件完整
-# python3==3.10.12 强制 Android 目标解释器为 3.10，避免 p4a 默认拉取 3.14 导致 cgi 缺失
-requirements = python3==3.10.12,hostpython3==3.10.12,kivy==2.2.1,deep-translator,openai,pyyaml,requests,urllib3,charset_normalizer,certifi,idna,httpx,httpcore,h11,sniffio,anyio,typing_extensions,tqdm,distro
+# python3==3.10.15 强制 Android 目标解释器为 3.10，避免 p4a 默认拉取 3.14 导致 cgi 缺失
+requirements = python3==3.10.15,hostpython3==3.10.15,kivy==2.2.1,pyjnius,deep-translator,openai,pyyaml,requests,urllib3,charset_normalizer,certifi,idna,httpx,httpcore,h11,sniffio,anyio,typing_extensions,tqdm,distro
+
 # 安卓权限
 android.permissions = INTERNET,READ_EXTERNAL_STORAGE,WRITE_EXTERNAL_STORAGE,MANAGE_EXTERNAL_STORAGE
 
