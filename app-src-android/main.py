@@ -46,6 +46,7 @@ from core import (
 )
 from translate import Translator
 
+
 # ---------------------------------------------------------------------------
 # 中文字体
 # ---------------------------------------------------------------------------
@@ -77,10 +78,13 @@ def _setup_font():
             continue
     return None
 
+
 FONT_NAME = _setup_font()
+
 
 def _font_prop():
     return {"font_name": FONT_NAME} if FONT_NAME else {}
+
 
 # ---------------------------------------------------------------------------
 # 主题
@@ -98,11 +102,13 @@ THEME = {
 CONFIG_FILE = Path("/sdcard/Download/mc-chinese-config.json")
 ERROR_LOG = Path("/sdcard/Download/mc-chinese-error.log")
 
+
 def _write_error_log():
     try:
         ERROR_LOG.write_text(traceback.format_exc(), encoding="utf-8")
     except Exception:
         pass
+
 
 def _request_android_permissions():
     try:
@@ -115,6 +121,7 @@ def _request_android_permissions():
         ])
     except Exception:
         pass
+
 
 # ---------------------------------------------------------------------------
 # 通用控件
@@ -142,6 +149,7 @@ class CLabel(Label):
         if self.size_hint_y is None:
             self.height = max(size[1], dp(20))
 
+
 class CButton(Button):
     def __init__(self, **kwargs):
         if FONT_NAME:
@@ -150,6 +158,7 @@ class CButton(Button):
         kwargs.setdefault("size_hint_y", None)
         kwargs.setdefault("height", dp(48))
         super().__init__(**kwargs)
+
 
 class CToggle(ToggleButton):
     def __init__(self, **kwargs):
@@ -160,6 +169,7 @@ class CToggle(ToggleButton):
         kwargs.setdefault("height", dp(44))
         kwargs.setdefault("group", kwargs.get("group", ""))
         super().__init__(**kwargs)
+
 
 class CInput(TextInput):
     def __init__(self, **kwargs):
@@ -174,6 +184,7 @@ class CInput(TextInput):
         kwargs.setdefault("foreground_color", THEME["fg"])
         kwargs.setdefault("cursor_color", THEME["accent"])
         super().__init__(**kwargs)
+
 
 # ---------------------------------------------------------------------------
 # 主界面
@@ -338,8 +349,54 @@ class MainLayout(BoxLayout):
             content.add_widget(row)
             self.input_items.append(inp)
 
-        # 4. 输出目录
-        content.add_widget(self._section_title("输出目录"))
+        # 4. 输出方式
+        content.add_widget(self._section_title("输出方式"))
+        content.add_widget(self._hint("选择一种处理方式，选中后下方会显示对应设置"))
+        output_mode_box = BoxLayout(
+            orientation="vertical",
+            size_hint_y=None,
+            height=dp(96),
+            spacing=dp(4),
+        )
+        self.output_mode_buttons = []
+        for label, desc in [
+            ("生成资源包/补丁", "生成可导入的资源包或补丁文件"),
+            ("直接修改 jar", "直接修改原文件并备份为 .backup"),
+        ]:
+            row = BoxLayout(
+                orientation="horizontal",
+                size_hint_y=None,
+                height=dp(44),
+                spacing=dp(8),
+            )
+            btn = CToggle(
+                text=label,
+                group="output_mode",
+                state="down" if label == "生成资源包/补丁" else "normal",
+                size_hint_x=None,
+                width=dp(36),
+            )
+            btn.value = label
+            btn.bind(on_press=self._on_output_mode_change)
+            self.output_mode_buttons.append(btn)
+            row.add_widget(btn)
+            row.add_widget(CLabel(
+                text=f"{label}  {desc}",
+                font_size=sp(14),
+                color=THEME["fg"],
+                valign="middle",
+            ))
+            output_mode_box.add_widget(row)
+        content.add_widget(output_mode_box)
+
+        # 5. 输出目录（根据输出方式显示/隐藏）
+        self.output_section = BoxLayout(
+            orientation="vertical",
+            size_hint_y=None,
+            spacing=dp(4),
+        )
+        self.output_section_title = self._section_title("输出目录")
+        self.output_section.add_widget(self.output_section_title)
         out_row = BoxLayout(
             orientation="horizontal",
             size_hint_y=None,
@@ -347,7 +404,7 @@ class MainLayout(BoxLayout):
             spacing=dp(8),
         )
         self.output_path = CInput(
-            hint_text="输出位置",
+            hint_text="资源包/补丁输出位置",
             text="/sdcard/Download/mc-chinese-output",
             size_hint_x=1,
         )
@@ -361,7 +418,18 @@ class MainLayout(BoxLayout):
         out_btn.bind(on_release=lambda x: self._open_chooser(self.output_path))
         out_row.add_widget(self.output_path)
         out_row.add_widget(out_btn)
-        content.add_widget(out_row)
+        self.output_section.add_widget(out_row)
+        content.add_widget(self.output_section)
+
+        # 直接修改模式说明
+        self.inplace_hint = self._hint(
+            "直接修改模式：原 jar 会自动备份为 .backup，无需填写输出目录",
+            height=dp(40),
+        )
+        self.inplace_hint.opacity = 0
+        self.inplace_hint.size_hint_y = None
+        self.inplace_hint.height = 0
+        content.add_widget(self.inplace_hint)
 
         # 5. 翻译模式
         content.add_widget(self._section_title("翻译模式"))
@@ -465,7 +533,11 @@ class MainLayout(BoxLayout):
         footer.add_widget(self.start_btn)
         self.add_widget(footer)
 
+        # 根据默认输出方式刷新界面
+        Clock.schedule_once(lambda dt: self._update_output_mode_ui(), 0)
+
     def _on_ai_change(self, btn):
+        # 确保只有一个按下
         for b in self.ai_buttons:
             if b != btn:
                 b.state = "normal"
@@ -476,6 +548,27 @@ class MainLayout(BoxLayout):
         for b in self.target_buttons:
             if b != btn:
                 b.state = "normal"
+
+    def _on_output_mode_change(self, btn):
+        for b in self.output_mode_buttons:
+            if b != btn:
+                b.state = "normal"
+        self._update_output_mode_ui()
+
+    def _update_output_mode_ui(self):
+        mode = self._get_output_mode_value()
+        if mode == "直接修改 jar":
+            self.output_section.opacity = 0
+            self.output_section.height = 0
+            self.output_section.size_hint_y = None
+            self.inplace_hint.opacity = 1
+            self.inplace_hint.height = dp(40)
+        else:
+            self.output_section.opacity = 1
+            self.output_section.height = dp(86)
+            self.output_section.size_hint_y = None
+            self.inplace_hint.opacity = 0
+            self.inplace_hint.height = 0
 
     def _get_ai_value(self):
         for btn in self.ai_buttons:
@@ -621,10 +714,12 @@ class MainLayout(BoxLayout):
                 self._set_ai(cfg.get("engine", "多引擎自动"))
                 self._set_target(cfg.get("target_type", "模组"))
                 self._set_mode(cfg.get("mode", "快速版"))
+                self._set_output_mode(cfg.get("output_mode", "生成资源包/补丁"))
                 self.delay_input.text = cfg.get("delay", "0.05")
                 self.api_key.text = cfg.get("api_key", "")
                 self.base_url.text = cfg.get("base_url", "")
                 self.model.text = cfg.get("model", "")
+                Clock.schedule_once(lambda dt: self._update_output_mode_ui(), 0)
         except Exception:
             pass
 
@@ -649,6 +744,13 @@ class MainLayout(BoxLayout):
             else:
                 btn.state = "normal"
 
+    def _set_output_mode(self, text):
+        for btn in self.output_mode_buttons:
+            if btn.text == text:
+                btn.state = "down"
+            else:
+                btn.state = "normal"
+
     def _save_config(self):
         try:
             CONFIG_FILE.parent.mkdir(parents=True, exist_ok=True)
@@ -658,6 +760,7 @@ class MainLayout(BoxLayout):
                 "engine": self._get_ai_button_text(),
                 "target_type": self._get_target_value(),
                 "mode": self._get_mode_value(),
+                "output_mode": self._get_output_mode_value(),
                 "delay": self.delay_input.text,
                 "api_key": self.api_key.text,
                 "base_url": self.base_url.text,
@@ -677,8 +780,16 @@ class MainLayout(BoxLayout):
         mapping = {"模组": "mods", "插件": "plugins", "整合包": "modpack", "服务器": "server"}
         return mapping.get(self._get_target_value(), "mods")
 
+    def _get_output_mode_value(self):
+        for btn in self.output_mode_buttons:
+            if btn.state == "down":
+                return btn.value
+        return "生成资源包/补丁"
+
     def _output_mode_map(self) -> str:
-        return "generate"
+        mode = self._get_output_mode_value()
+        mapping = {"生成资源包/补丁": "generate", "直接修改 jar": "inplace"}
+        return mapping.get(mode, "generate")
 
     def _start(self, _):
         input_paths = [Path(inp.text.strip()) for inp in self.input_items if inp.text.strip()]
@@ -731,6 +842,7 @@ class MainLayout(BoxLayout):
                 model=model,
                 mode=mode,
                 delay=delay,
+                cache_dir=Path("/sdcard/Download/.mc_mod_chinese/cache"),
             )
             self._log(translator.readiness_message())
 
@@ -791,8 +903,16 @@ class MainLayout(BoxLayout):
                     self._log(f"扫描到 {len(jars)} 个插件 jar")
                     if not jars:
                         continue
-                    presult = generate_plugin_patch(jars, translator, output_path, on_log=lambda m: self._log(m), progress_cb=progress_cb)
+                    if output_mode == "inplace":
+                        presult = []
+                        for jidx, jar in enumerate(jars):
+                            presult.append(process_plugin_jar_inplace(jar, translator, backup=True, on_log=lambda m: self._log(m)))
+                            progress_cb(jidx + 1, len(jars), f"直接修改插件 {jar.name}")
+                    else:
+                        presult = generate_plugin_patch(jars, translator, output_path, on_log=lambda m: self._log(m), progress_cb=progress_cb)
                     stats = summarize(presult)
+                    if output_mode == "inplace":
+                        self._log(f"插件已直接修改（原 jar 已备份为 .backup）")
                     self._log(
                         f"插件统计：共 {stats['total']} 个，"
                         f"翻译 {stats['translated_mods']} 个，"
@@ -805,16 +925,24 @@ class MainLayout(BoxLayout):
                     self._log(f"扫描到 {len(jars)} 个模组 jar")
                     if not jars:
                         continue
-                    mresult = generate_resource_pack(
-                        jars,
-                        translator,
-                        output_path,
-                        pack_name="AutoChineseResourcePack",
-                        pack_format=15,
-                        on_log=lambda m: self._log(m),
-                        progress_cb=progress_cb,
-                    )
+                    if output_mode == "inplace":
+                        mresult = []
+                        for jidx, jar in enumerate(jars):
+                            mresult.append(process_jar_inplace(jar, translator, backup=True, on_log=lambda m: self._log(m)))
+                            progress_cb(jidx + 1, len(jars), f"直接修改模组 {jar.name}")
+                    else:
+                        mresult = generate_resource_pack(
+                            jars,
+                            translator,
+                            output_path,
+                            pack_name="AutoChineseResourcePack",
+                            pack_format=15,
+                            on_log=lambda m: self._log(m),
+                            progress_cb=progress_cb,
+                        )
                     stats = summarize(mresult)
+                    if output_mode == "inplace":
+                        self._log(f"模组已直接修改（原 jar 已备份为 .backup）")
                     self._log(
                         f"模组统计：共 {stats['total']} 个，"
                         f"翻译 {stats['translated_mods']} 个，"
@@ -837,6 +965,7 @@ class MainLayout(BoxLayout):
         self.eta_label.text = "预计剩余时间：已完成"
         self._start_time = None
 
+
 class MCChineseApp(App):
     def build(self):
         try:
@@ -849,6 +978,7 @@ class MCChineseApp(App):
             except Exception:
                 pass
             raise
+
 
 if __name__ == "__main__":
     try:
