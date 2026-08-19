@@ -28,6 +28,7 @@ from kivy.uix.button import Button
 from kivy.uix.label import Label
 from kivy.uix.popup import Popup
 from kivy.uix.progressbar import ProgressBar
+from kivy.uix.spinner import Spinner
 from kivy.uix.scrollview import ScrollView
 from kivy.uix.textinput import TextInput
 from kivy.uix.togglebutton import ToggleButton
@@ -113,11 +114,17 @@ def _write_error_log():
 def _request_android_permissions():
     try:
         from android.permissions import request_permissions, Permission
-        request_permissions([
+        perms = [
             Permission.INTERNET,
             Permission.READ_EXTERNAL_STORAGE,
             Permission.WRITE_EXTERNAL_STORAGE,
-        ])
+        ]
+        # Android 11+ 尽量申请所有文件访问权限
+        try:
+            perms.append(Permission.MANAGE_EXTERNAL_STORAGE)
+        except Exception:
+            pass
+        request_permissions(perms)
     except Exception:
         pass
 
@@ -134,7 +141,8 @@ def _check_all_files_permission():
         Environment = autoclass("android.os.Environment")
         return bool(Environment.isExternalStorageManager())
     except Exception:
-        return True
+        # 无法检测时按“未确认”处理，让界面提示用户
+        return False
 
 
 def _open_all_files_settings():
@@ -310,26 +318,45 @@ class MainLayout(BoxLayout):
         # 1. AI 选择
         content.add_widget(self._section_title("选择 AI 翻译引擎"))
         content.add_widget(self._hint("点击选择要使用的翻译引擎"))
-        ai_box = BoxLayout(
+        self.ai_options = [
+            ("multi_free", "多引擎自动"),
+            ("baidu_free", "百度翻译"),
+            ("youdao_free", "有道翻译"),
+            ("bing", "Bing 翻译"),
+            ("papago", "Papago"),
+            ("mymemory", "MyMemory"),
+            ("libre", "LibreTranslate"),
+            ("deepl_free", "DeepL"),
+            ("argos", "Argos（离线）"),
+            ("google_free", "Google 免费"),
+            ("linguee", "Linguee"),
+            ("pons", "PONS"),
+            ("yandex", "Yandex"),
+            ("llm", "LLM API"),
+        ]
+        self.ai_value_map = {d: v for v, d in self.ai_options}
+        self.ai_display_map = {v: d for v, d in self.ai_options}
+
+        ai_row = BoxLayout(
             orientation="horizontal",
             size_hint_y=None,
-            height=dp(48),
+            height=dp(52),
             spacing=dp(8),
         )
-        self.ai_buttons = []
-        ai_options = [
-            ("多引擎自动", "multi_free"),
-            ("百度翻译", "baidu_free"),
-            ("有道翻译", "youdao_free"),
-            ("LLM API", "llm"),
-        ]
-        for label, value in ai_options:
-            btn = CToggle(text=label, group="ai", state="down" if value == "multi_free" else "normal")
-            btn.value = value
-            btn.bind(on_press=self._on_ai_change)
-            self.ai_buttons.append(btn)
-            ai_box.add_widget(btn)
-        content.add_widget(ai_box)
+        self.ai_spinner = Spinner(
+            text=self.ai_display_map["multi_free"],
+            values=[d for _, d in self.ai_options],
+            size_hint=(1, None),
+            height=dp(48),
+            background_color=THEME["accent"],
+            color=THEME["white"],
+            font_size=sp(15),
+        )
+        if FONT_NAME:
+            self.ai_spinner.font_name = FONT_NAME
+        self.ai_spinner.bind(text=self._on_ai_change)
+        ai_row.add_widget(self.ai_spinner)
+        content.add_widget(ai_row)
 
         # 2. 翻译目标选择
         content.add_widget(self._section_title("选择翻译目标"))
@@ -572,12 +599,8 @@ class MainLayout(BoxLayout):
         # 根据默认输出方式刷新界面
         Clock.schedule_once(lambda dt: self._update_output_mode_ui(), 0)
 
-    def _on_ai_change(self, btn):
-        # 确保只有一个按下
-        for b in self.ai_buttons:
-            if b != btn:
-                b.state = "normal"
-        if self._get_ai_value() == "llm":
+    def _on_ai_change(self, spinner, text):
+        if self.ai_value_map.get(text) == "llm":
             self._log("提示：选择 LLM API 后请填写 API Key")
 
     def _on_target_change(self, btn):
@@ -607,10 +630,7 @@ class MainLayout(BoxLayout):
             self.inplace_hint.height = 0
 
     def _get_ai_value(self):
-        for btn in self.ai_buttons:
-            if btn.state == "down":
-                return btn.value
-        return "multi_free"
+        return self.ai_value_map.get(self.ai_spinner.text, "multi_free")
 
     def _get_target_value(self):
         for btn in self.target_buttons:
@@ -760,11 +780,12 @@ class MainLayout(BoxLayout):
             pass
 
     def _set_ai(self, text):
-        for btn in self.ai_buttons:
-            if btn.text == text:
-                btn.state = "down"
-            else:
-                btn.state = "normal"
+        if text in self.ai_value_map:
+            self.ai_spinner.text = text
+        elif text in self.ai_display_map:
+            self.ai_spinner.text = self.ai_display_map[text]
+        else:
+            self.ai_spinner.text = self.ai_display_map.get("multi_free", "多引擎自动")
 
     def _set_target(self, text):
         for btn in self.target_buttons:
@@ -807,10 +828,7 @@ class MainLayout(BoxLayout):
             self._log(f"保存配置失败：{exc}")
 
     def _get_ai_button_text(self):
-        for btn in self.ai_buttons:
-            if btn.state == "down":
-                return btn.text
-        return "多引擎自动"
+        return self.ai_spinner.text
 
     def _target_map(self) -> str:
         mapping = {"模组": "mods", "插件": "plugins", "整合包": "modpack", "服务器": "server"}
@@ -828,8 +846,13 @@ class MainLayout(BoxLayout):
         return mapping.get(mode, "generate")
 
     def _start(self, _):
-        input_paths = [Path(inp.text.strip()) for inp in self.input_items if inp.text.strip()]
-        input_paths = [p for p in input_paths if p.exists()]
+        raw_paths = [Path(inp.text.strip()) for inp in self.input_items if inp.text.strip()]
+        input_paths = []
+        for p in raw_paths:
+            if p.exists():
+                input_paths.append(p)
+            else:
+                self._log(f"路径不存在或无权访问，已忽略：{p}")
         output_path = Path(self.output_path.text.strip())
         target = self._target_map()
         output_mode = self._output_mode_map()
@@ -944,6 +967,7 @@ class MainLayout(BoxLayout):
                     self._log(f"实际扫描目录：{plugins_dir}")
                     jars = scan_jars(plugins_dir, on_log=lambda m: self._log(m))
                     if not jars:
+                        self._log(f"未在 {plugins_dir} 找到任何 jar 文件，跳过该目录")
                         continue
                     if output_mode == "inplace":
                         presult = []
@@ -966,6 +990,7 @@ class MainLayout(BoxLayout):
                     self._log(f"实际扫描目录：{mods_dir}")
                     jars = scan_jars(mods_dir, on_log=lambda m: self._log(m))
                     if not jars:
+                        self._log(f"未在 {mods_dir} 找到任何 jar 文件，跳过该目录")
                         continue
                     if output_mode == "inplace":
                         mresult = []

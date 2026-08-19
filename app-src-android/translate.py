@@ -257,6 +257,90 @@ class PonsEngine(BaseEngine):
         return self._translator.translate(text)
 
 
+class BingEngine(BaseEngine):
+    """Microsoft Bing 免费翻译（通过 deep-translator）。"""
+
+    name = "bing"
+
+    def __init__(self):
+        self._ready = False
+        try:
+            from deep_translator import MicrosoftTranslator
+
+            self._translator = MicrosoftTranslator(source="en", target="zh-Hans")
+            self._ready = True
+        except Exception as exc:
+            self._error = str(exc)
+
+    def translate(self, text: str, source: str = "en", target: str = "zh") -> str:
+        if not self._ready:
+            raise RuntimeError(f"Bing 引擎未就绪：{getattr(self, '_error', 'unknown')}")
+        return self._translator.translate(text)
+
+
+class PapagoEngine(BaseEngine):
+    """Naver Papago 免费翻译（通过 deep-translator，短文本效果好）。"""
+
+    name = "papago"
+
+    def __init__(self):
+        self._ready = False
+        try:
+            from deep_translator import PapagoTranslator
+
+            self._translator = PapagoTranslator(source="en", target="zh-CN")
+            self._ready = True
+        except Exception as exc:
+            self._error = str(exc)
+
+    def translate(self, text: str, source: str = "en", target: str = "zh") -> str:
+        if not self._ready:
+            raise RuntimeError(f"Papago 引擎未就绪：{getattr(self, '_error', 'unknown')}")
+        return self._translator.translate(text)
+
+
+class YandexEngine(BaseEngine):
+    """Yandex 免费翻译（通过 deep-translator）。"""
+
+    name = "yandex"
+
+    def __init__(self):
+        self._ready = False
+        try:
+            from deep_translator import YandexTranslator
+
+            self._translator = YandexTranslator(source="en", target="zh")
+            self._ready = True
+        except Exception as exc:
+            self._error = str(exc)
+
+    def translate(self, text: str, source: str = "en", target: str = "zh") -> str:
+        if not self._ready:
+            raise RuntimeError(f"Yandex 引擎未就绪：{getattr(self, '_error', 'unknown')}")
+        return self._translator.translate(text)
+
+
+class DeepLFreeEngine(BaseEngine):
+    """DeepL 免费翻译（通过 deep-translator，无需 Key 时使用公共接口）。"""
+
+    name = "deepl_free"
+
+    def __init__(self):
+        self._ready = False
+        try:
+            from deep_translator import DeeplTranslator
+
+            self._translator = DeeplTranslator(source="en", target="zh", api_key=None)
+            self._ready = True
+        except Exception as exc:
+            self._error = str(exc)
+
+    def translate(self, text: str, source: str = "en", target: str = "zh") -> str:
+        if not self._ready:
+            raise RuntimeError(f"DeepL 引擎未就绪：{getattr(self, '_error', 'unknown')}")
+        return self._translator.translate(text)
+
+
 class LLMEngine(BaseEngine):
     """OpenAI 兼容接口（OpenAI / DeepSeek / 硅基流动 等）。"""
 
@@ -310,22 +394,31 @@ class LLMEngine(BaseEngine):
 FREE_ENGINE_ORDER = [
     BaiduFreeEngine,
     YoudaoFreeEngine,
+    BingEngine,
+    PapagoEngine,
     MyMemoryEngine,
     LibreTranslateEngine,
+    DeepLFreeEngine,
+    ArgosEngine,
+    GoogleFreeEngine,
     LingueeEngine,
     PonsEngine,
-    GoogleFreeEngine,
+    YandexEngine,
 ]
 
 FREE_ENGINE_MAP = {
     "baidu_free": BaiduFreeEngine,
     "youdao_free": YoudaoFreeEngine,
+    "bing": BingEngine,
+    "papago": PapagoEngine,
     "mymemory": MyMemoryEngine,
     "libre": LibreTranslateEngine,
+    "deepl_free": DeepLFreeEngine,
     "linguee": LingueeEngine,
     "pons": PonsEngine,
     "google_free": GoogleFreeEngine,
     "argos": ArgosEngine,
+    "yandex": YandexEngine,
 }
 
 
