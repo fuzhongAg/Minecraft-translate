@@ -1,7 +1,7 @@
 [app]
 
 # 应用标题
-title = MC自动中文化_普通版
+title = Minecraft汉化工具
 
 # 包名
 package.name = mcchinesefeature
@@ -16,7 +16,7 @@ source.dir = .
 source.include_exts = py,png,jpg,kv,atlas,yml,json,txt,ttf,ttc,otf
 
 # 版本号
-version = 1.0.0
+version = 2.0.0
 
 # 依赖列表（确保打包进 APK）
 # 使用 kivy==2.2.1 让 python-for-android 内置 recipe 从源码编译，确保 config.pxi 等头文件完整
